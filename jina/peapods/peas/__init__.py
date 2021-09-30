@@ -181,7 +181,9 @@ class BasePea:
         """
         self.worker.start()
         if not self.args.noblock_on_start:
-            self.wait_start_success()
+            import asyncio
+
+            asyncio.run(self.wait_start_success())
         return self
 
     def join(self, *args, **kwargs):
@@ -242,14 +244,14 @@ class BasePea:
             skip_deactivate=skip_deactivate,
         )
 
-    def _wait_for_ready_or_shutdown(self, timeout: Optional[float]):
+    async def _wait_for_ready_or_shutdown(self, timeout: Optional[float]):
         """
         Waits for the process to be ready or to know it has failed.
 
         :param timeout: The time to wait before readiness or failure is determined
             .. # noqa: DAR201
         """
-        return self.runtime_cls.wait_for_ready_or_shutdown(
+        return await self.runtime_cls.wait_for_ready_or_shutdown(
             timeout=timeout,
             ready_or_shutdown_event=self.ready_or_shutdown.event,
             ctrl_address=self.runtime_ctrl_address,
@@ -257,7 +259,7 @@ class BasePea:
             shutdown_event=self.is_shutdown,
         )
 
-    def wait_start_success(self):
+    async def wait_start_success(self):
         """Block until all peas starts successfully.
 
         If not success, it will raise an error hoping the outer function to catch it
@@ -268,7 +270,8 @@ class BasePea:
         else:
             _timeout /= 1e3
 
-        if self._wait_for_ready_or_shutdown(_timeout):
+        is_ready_or_shutdown = await self._wait_for_ready_or_shutdown(_timeout)
+        if is_ready_or_shutdown:
             if self.is_shutdown.is_set():
                 # return too early and the shutdown is set, means something fails!!
                 if not self.is_started.is_set():
@@ -345,7 +348,10 @@ class BasePea:
             else:
                 _timeout /= 1e3
             self.logger.debug('waiting for ready or shutdown signal from runtime')
-            if self._wait_for_ready_or_shutdown(_timeout):
+            import asyncio
+
+            ready_or_shutdown = asyncio.run(self._wait_for_ready_or_shutdown(_timeout))
+            if ready_or_shutdown:
                 if not self.is_shutdown.is_set():
                     self._cancel_runtime(skip_deactivate=True)
                     if not self.is_shutdown.wait(timeout=self._timeout_ctrl):
